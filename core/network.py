@@ -69,8 +69,9 @@ class RAFTGMA(nn.Module):
         up_flow = up_flow.permute(0, 1, 4, 2, 5, 3)
         return up_flow.reshape(N, 2, 8 * H, 8 * W)
 
-    def forward(self, image1, image2, iters=12, flow_init=None, upsample=True, test_mode=False):
+    def forward(self, x, iters=12, flow_init=None, upsample=True, test_mode=False):
         """ Estimate optical flow between pair of frames """
+        image1, image2 = torch.chunk(x, 2, dim=1)
 
         image1 = 2 * (image1 / 255.0) - 1.0
         image2 = 2 * (image2 / 255.0) - 1.0
@@ -127,3 +128,34 @@ class RAFTGMA(nn.Module):
             return coords1 - coords0, flow_up
 
         return flow_predictions
+
+
+
+if __name__ == '__main__':
+    from ptflops import get_model_complexity_info
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--name', default='raft', help="name your experiment")
+    parser.add_argument('--small', action='store_false', help='use small model')
+    parser.add_argument('--mixed_precision', action='store_true', help='use mixed precision')
+    parser.add_argument('--num_heads', default=1, type=int, help='number of heads in attention and aggregation')
+    parser.add_argument('--position_only', default=False, action='store_true',
+                        help='only use position-wise attention')
+    parser.add_argument('--position_and_content', default=False, action='store_true',
+                        help='use position and content-wise attention')
+
+    args = parser.parse_args()
+
+    net = RAFTGMA(args)
+    with torch.cuda.device(0):
+        macs, params = get_model_complexity_info(net, (6, 160, 96), as_strings=True, print_per_layer_stat=True, verbose=True)
+        print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
+        print('{:<30}  {:<8}'.format('Number of parameters: ', params))
+
+        data = torch.randn((2, 6, 224, 224))
+        out = net(data)
+
+    # default
+    # Computational complexity:       13.61 GMac
+    # Number of parameters:           5.88 M  
